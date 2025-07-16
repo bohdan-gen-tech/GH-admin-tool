@@ -2,8 +2,6 @@
 
 Tampermonkey userscript to find and manage users on the Get-Honey platform via an on-screen administrative panel.
 
-![panel-screenshot]([https://i.imgur.com/uR13r4m.png](https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000))
-
 ## ✅ Features
 
 - **Find any user** on the platform by their User ID or Email address.
