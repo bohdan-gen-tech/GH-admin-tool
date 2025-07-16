@@ -8,8 +8,8 @@
 // @icon         https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @updateURL    https://raw.githubusercontent.com/bohdan-gen-tech/GH-user-parser/main/get-honey-admin-tool.user.js
-// @downloadURL  https://raw.githubusercontent.com/bohdan-gen-tech/GH-user-parser/main/get-honey-admin-tool.user.js
+// @updateURL    https://raw.githubusercontent.com/bohdan-gen-tech/GH-admin-tool/main/get-honey-admin-tool.user.js
+// @downloadURL  https://raw.githubusercontent.com/bohdan-gen-tech/GH-admin-tool/main/get-honey-admin-tool.user.js
 // ==/UserScript==
 
 (function () {
