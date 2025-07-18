@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Get-Honey Admin Tool
 // @namespace    https://github.com/bohdan-gen-tech
-// @version      2025.07.18.11
-// @description  UPDATE THIS CODE FROM CONFLUENCE PAGE. UPDATED STABLE COLLAPSE PANEL FEATURE AND SAVE DISPLAY USER DATA AFTER RELOADING PAGE
+// @version      2025.07.18.12
+// @description  Added drag and drop capability on mobile devices
 // @author       Bohdan S.
 // @match        https://get-honey.ai/*
 // @icon         https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000
@@ -634,32 +634,64 @@
     function makeDraggable(container) {
         const dragHandle = container.querySelector(config.selectors.dragHandle);
         if (!dragHandle) return;
+
         let isDragging = false;
         let offsetX, offsetY;
-        const onMouseMove = (e) => {
-            if (!isDragging) return;
-            container.style.left = `${e.clientX - offsetX}px`;
-            container.style.top = `${e.clientY - offsetY}px`;
+
+        // A helper function to get coordinates from either mouse or touch events
+        const getCoords = (e) => {
+            if (e.touches && e.touches.length) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
         };
-        const onMouseUp = () => {
-            if (!isDragging) return;
-            isDragging = false;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            localStorage.setItem(config.storage.positionKey, JSON.stringify({ left: container.offsetLeft, top: container.offsetTop }));
-        };
-        const onMouseDown = (e) => {
+
+        const onDragStart = (e) => {
             isDragging = true;
-            offsetX = e.clientX - container.getBoundingClientRect().left;
-            offsetY = e.clientY - container.getBoundingClientRect().top;
+            const coords = getCoords(e);
+            offsetX = coords.x - container.getBoundingClientRect().left;
+            offsetY = coords.y - container.getBoundingClientRect().top;
+
             container.style.transition = 'none';
             container.style.right = 'auto';
             container.style.bottom = 'auto';
-            e.preventDefault();
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
+
+            // Add listeners for both mouse and touch move events
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('touchmove', onDragMove, { passive: false });
+
+            // Add listeners for both mouse and touch end events
+            document.addEventListener('mouseup', onDragEnd);
+            document.addEventListener('touchend', onDragEnd);
         };
-        dragHandle.addEventListener('mousedown', onMouseDown);
+
+        const onDragMove = (e) => {
+            if (!isDragging) return;
+            // Prevent the page from scrolling on mobile while dragging
+            e.preventDefault();
+
+            const coords = getCoords(e);
+            container.style.left = `${coords.x - offsetX}px`;
+            container.style.top = `${coords.y - offsetY}px`;
+        };
+
+        const onDragEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+
+            // Remove all move and end listeners
+            document.removeEventListener('mousemove', onDragMove);
+            document.removeEventListener('touchmove', onDragMove);
+            document.removeEventListener('mouseup', onDragEnd);
+            document.removeEventListener('touchend', onDragEnd);
+
+            // Save the final position
+            localStorage.setItem(config.storage.positionKey, JSON.stringify({ left: container.offsetLeft, top: container.offsetTop }));
+        };
+
+        // Attach the initial start listeners
+        dragHandle.addEventListener('mousedown', onDragStart);
+        dragHandle.addEventListener('touchstart', onDragStart, { passive: false });
     }
 
     // --- INITIALIZATION ---
