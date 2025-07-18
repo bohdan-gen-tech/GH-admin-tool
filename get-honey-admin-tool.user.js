@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Get-Honey Admin Tool
 // @namespace    https://github.com/bohdan-gen-tech
-// @version      2025.07.16.1
-// @description  Finds a user by ID or Email and allows editing tokens, subscription, and user features.
+// @version      2025.07.18.11
+// @description  UPDATE THIS CODE FROM CONFLUENCE PAGE. UPDATED STABLE COLLAPSE PANEL FEATURE AND SAVE DISPLAY USER DATA AFTER RELOADING PAGE
 // @author       Bohdan S.
 // @match        https://get-honey.ai/*
 // @icon         https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000
@@ -22,6 +22,7 @@
             positionKey: 'adminToolPanelPosition',
             adminTokenCacheKey: 'adminAuthTokenCache',
             collapsedKey: 'adminToolPanelCollapsed',
+            currentUserKey: 'BGT-AdminTool-CurrentUser',
         },
         api: {
             loginUrl: '', // <-- ENTER YOUR LOGIN ENDPOINT
@@ -48,13 +49,12 @@
         ],
         nonInteractiveFeatures: ['UserId'],
         selectors: {
-            container: '#adminToolPanel',
-            panelBody: '#admin-tool-results',
+            container: '#BGT-AdminContainer',
+            panelBody: '#BGT-AdminPanelBody',
             findUserBtn: '[data-action="find-user"]',
             resetBtn: '[data-action="reset"]',
             userIdInput: '#admin-tool-user-id-input',
             emailInput: '#admin-tool-email-input',
-            resultsContainer: '#admin-tool-results',
             messageArea: '#admin-tool-message-area',
             searchHint: '#admin-tool-search-hint',
             activateBtn: '[data-action="activate-sub"]',
@@ -70,7 +70,7 @@
         },
     };
 
-    let ui = { container: null, loader: null };
+    let ui = { container: null };
     let currentUser = null;
     let lastEditedField = null;
 
@@ -89,22 +89,33 @@
      */
     function getApiConfigForCurrentDomain() {
         const currentHost = window.location.hostname.replace(/^www\./, '');
-        if (config.domainGroups.prod.includes(currentHost)) {
-            return { apiBase: config.api.prodApiBase, productId: config.api.prodProductId };
-        } else if (config.domainGroups.stage.includes(currentHost)) {
-            return { apiBase: config.api.stageApiBase, productId: config.api.stageProductId };
-        }
+        if (config.domainGroups.prod.includes(currentHost)) return { apiBase: config.api.prodApiBase, productId: config.api.prodProductId };
+        if (config.domainGroups.stage.includes(currentHost)) return { apiBase: config.api.stageApiBase, productId: config.api.stageProductId };
         return { apiBase: config.api.stageApiBase, productId: config.api.stageProductId };
     }
 
     /**
-     * Initializes the script by rendering the panel and attaching event listeners.
+     * Loads the current user's data from sessionStorage on script startup.
+     */
+    function loadPersistedUser() {
+        const savedUserJSON = sessionStorage.getItem(config.storage.currentUserKey);
+        if (savedUserJSON) {
+            try {
+                currentUser = JSON.parse(savedUserJSON);
+            } catch (e) {
+                console.error("Failed to parse saved user data:", e);
+                sessionStorage.removeItem(config.storage.currentUserKey);
+                currentUser = null;
+            }
+        }
+    }
+
+    /**
+     * Initializes the script.
      */
     function init() {
-        hideLoader();
+        loadPersistedUser();
         renderPanel();
-        attachEventListeners();
-        makeDraggable();
     }
 
     /**
@@ -119,22 +130,28 @@
     }
 
     /**
-     * Attaches all global event listeners for the panel's functionality.
+     * Attaches all event listeners for the panel's functionality.
      */
     function attachEventListeners() {
-        document.body.addEventListener('click', (e) => {
-            if (!ui.container) return;
+        if (!ui.container) return;
+
+        ui.container.addEventListener('click', (e) => {
             const target = e.target.closest('[data-action]');
-            if (!ui.container.contains(e.target)) {
-                const openDropdowns = ui.container.querySelectorAll('.feature-dropdown');
-                openDropdowns.forEach(dd => dd.style.display = 'none');
-            }
-            if (!target || !ui.container.contains(target)) return;
+            if (!target) return;
 
             const action = target.dataset.action;
             const actions = {
-                'close': () => { ui.container.remove(); ui.container = null; },
-                'reset': () => { currentUser = null; lastEditedField = null; renderPanel(); },
+                'close': () => {
+                    sessionStorage.removeItem(config.storage.currentUserKey);
+                    ui.container.remove();
+                    ui.container = null;
+                },
+                'reset': () => {
+                    sessionStorage.removeItem(config.storage.currentUserKey);
+                    currentUser = null;
+                    lastEditedField = null;
+                    renderPanel();
+                },
                 'find-user': () => handleFindUser(),
                 'activate-sub': () => handleSubscriptionActivation(target, currentUser.id),
                 'update-tokens': () => handleUpdateTokens(target, currentUser.id),
@@ -146,8 +163,7 @@
             actions[action]?.();
         });
 
-        document.body.addEventListener('keydown', (e) => {
-             if (!ui.container) return;
+        ui.container.addEventListener('keydown', (e) => {
              if (e.key === 'Enter') {
                  if (e.target.matches(config.selectors.userIdInput) || e.target.matches(config.selectors.emailInput)) {
                      handleFindUser();
@@ -157,8 +173,7 @@
              }
         });
 
-        document.body.addEventListener('input', (e) => {
-            if (!ui.container) return;
+        ui.container.addEventListener('input', (e) => {
             const target = e.target;
             if (target.matches(config.selectors.userIdInput)) {
                 lastEditedField = 'id';
@@ -168,6 +183,13 @@
                 updateSearchHint();
             }
         });
+
+        document.body.addEventListener('click', (e) => {
+            if (ui.container && !ui.container.contains(e.target)) {
+                const openDropdowns = ui.container.querySelectorAll('.feature-dropdown');
+                openDropdowns.forEach(dd => dd.style.display = 'none');
+            }
+        }, true);
     }
 
     /**
@@ -193,9 +215,8 @@
     async function getAdminAccessToken() {
         const cachedTokenData = GM_getValue(config.storage.adminTokenCacheKey, null);
         const now = new Date().getTime();
-        if (cachedTokenData && cachedTokenData.expiry > now) {
-            return cachedTokenData.token;
-        }
+        if (cachedTokenData && cachedTokenData.expiry > now) return cachedTokenData.token;
+
         const { apiBase } = getApiConfigForCurrentDomain();
         const loginResp = await fetch(apiBase + config.api.loginUrl, {
             method: 'POST',
@@ -205,7 +226,7 @@
         if (!loginResp.ok) throw new Error(`Admin login failed: ${loginResp.status}`);
         const { accessToken } = await loginResp.json();
         if (!accessToken) throw new Error('No admin accessToken received');
-        const expiry = now + (24 * 60 * 60 * 1000); // 24-hour expiry
+        const expiry = now + (24 * 60 * 60 * 1000);
         GM_setValue(config.storage.adminTokenCacheKey, { token: accessToken, expiry });
         return accessToken;
     }
@@ -218,33 +239,26 @@
         const emailInput = ui.container.querySelector(config.selectors.emailInput);
         const messageArea = ui.container.querySelector(config.selectors.messageArea);
         const findButton = ui.container.querySelector(config.selectors.findUserBtn);
-
         let userId = userIdInput.value.trim();
         let email = emailInput.value.trim();
-
         if (userId && email) {
             if (lastEditedField === 'id') email = '';
             else userId = '';
         }
-
         if (!userId && !email) {
             messageArea.textContent = 'Please enter a User ID or an Email.';
             return;
         }
-
         findButton.disabled = true;
         findButton.textContent = '⏳ Finding...';
         messageArea.textContent = '';
-        let targetUserId = userId;
-        let originalEmail = email;
-
         try {
             const adminToken = await getAdminAccessToken();
             const { apiBase } = getApiConfigForCurrentDomain();
-
+            let targetUserId = userId;
             if (!targetUserId && email) {
                 messageArea.textContent = 'Resolving email to ID...';
-                const idResponse = await fetch(apiBase + config.api.getUserIdByEmailUrl, {
+                const idResponse = await fetch(`${apiBase}${config.api.getUserIdByEmailUrl}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
                     body: JSON.stringify({ email }),
@@ -253,21 +267,15 @@
                 targetUserId = (await idResponse.text()).replace(/"/g, '');
                 if (!targetUserId) throw new Error('Email not found.');
             }
-
             messageArea.textContent = `Fetching data for ID: ${targetUserId}...`;
-            const featuresResponse = await fetch(`${apiBase}${config.api.getUserFeaturesUrl}?UserId=${targetUserId}`, {
-                headers: { 'Authorization': `Bearer ${adminToken}` }
-            });
+            const featuresResponse = await fetch(`${apiBase}${config.api.getUserFeaturesUrl}?UserId=${targetUserId}`, { headers: { 'Authorization': `Bearer ${adminToken}` } });
             if (!featuresResponse.ok) throw new Error(`User features fetch failed: ${featuresResponse.status}`);
             const featuresData = await featuresResponse.json();
+            currentUser = { id: targetUserId, email: email || featuresData.Email || 'N/A', features: featuresData };
 
-            currentUser = {
-                id: targetUserId,
-                email: originalEmail || featuresData.Email || 'N/A',
-                features: featuresData,
-            };
+            sessionStorage.setItem(config.storage.currentUserKey, JSON.stringify(currentUser));
+
             renderPanel();
-
         } catch (err) {
             console.error(err);
             messageArea.textContent = `❌ Error: ${err.message}`;
@@ -275,9 +283,6 @@
             findButton.textContent = 'Find User';
         }
     }
-
-
-    // --- FEATURE/SUBSCRIPTION/TOKEN HANDLERS ---
 
     /**
      * Grants a one-month free subscription to the specified user.
@@ -350,10 +355,7 @@
     async function handleUpdateUserFeature(userId, featureKey, newFeatureValue) {
         const { apiBase } = getApiConfigForCurrentDomain();
         const accessToken = await getAdminAccessToken();
-        const body = {
-            userId,
-            features: { [capitalize(featureKey)]: newFeatureValue }
-        };
+        const body = { userId, features: { [capitalize(featureKey)]: newFeatureValue } };
         const response = await fetch(apiBase + config.api.updateUserFeaturesUrl, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
@@ -364,6 +366,7 @@
             throw new Error(`${response.status}: ${errorBody}`);
         }
         currentUser.features[featureKey] = newFeatureValue;
+        sessionStorage.setItem(config.storage.currentUserKey, JSON.stringify(currentUser));
     }
 
     /**
@@ -423,12 +426,10 @@
      */
     function handleToggleDropdown(button) {
         const dropdownId = button.dataset.targetDropdown;
-        const dropdown = document.getElementById(dropdownId);
+        const dropdown = ui.container.querySelector(`#${dropdownId}`);
         if (dropdown) {
             const isVisible = dropdown.style.display === 'block';
-            // Close all other dropdowns first
             ui.container.querySelectorAll('.feature-dropdown').forEach(dd => dd.style.display = 'none');
-            // Then toggle the current one
             dropdown.style.display = isVisible ? 'none' : 'block';
         }
     }
@@ -441,15 +442,12 @@
         const newValue = optionElement.dataset.value;
         const dropdown = optionElement.closest('.feature-dropdown');
         if (!dropdown) return;
-
         const inputSelector = dropdown.dataset.targetInput;
         const inputElement = ui.container.querySelector(inputSelector);
-
         if (inputElement) {
             inputElement.value = newValue;
             inputElement.focus();
         }
-
         dropdown.style.display = 'none';
     }
 
@@ -461,101 +459,66 @@
         const body = ui.container.querySelector(config.selectors.panelBody);
         if (!body) return;
 
-        const isCurrentlyCollapsed = body.style.display === 'none';
-        if (isCurrentlyCollapsed) {
-            body.style.display = 'block';
-            button.innerHTML = '–';
-            button.title = 'Collapse';
-            GM_setValue(config.storage.collapsedKey, false);
-        } else {
-            body.style.display = 'none';
-            button.innerHTML = '◻';
-            button.title = 'Expand';
-            GM_setValue(config.storage.collapsedKey, true);
-        }
+        const isCurrentlyHidden = body.style.display === 'none';
+        const newState = !isCurrentlyHidden;
+
+        body.style.display = newState ? 'none' : 'block';
+        button.textContent = newState ? '◻' : '–';
+        button.title = newState ? 'Expand' : 'Collapse';
+
+        GM_setValue(config.storage.collapsedKey, newState);
     }
 
     // --- UI & PANEL RENDERING ---
 
     /**
-     * Displays a loading indicator on the screen.
-     */
-    function showLoader() {
-        if (ui.loader) return;
-        ui.loader = document.createElement('div');
-        ui.loader.textContent = '⏳ Loading data...';
-        Object.assign(ui.loader.style, {
-            position: 'fixed', bottom: '20px', left: '20px', padding: '8px 12px',
-            background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '10px',
-            fontFamily: 'monospace', borderRadius: '9px', zIndex: 9999, backdropFilter: 'blur(4px)',
-        });
-        document.body.appendChild(ui.loader);
-    }
-
-    /**
-     * Hides the loading indicator.
-     */
-    function hideLoader() {
-        if (ui.loader) {
-            ui.loader.remove();
-            ui.loader = null;
-        }
-    }
-
-    /**
-     * Renders the main panel UI, either the search view or the user data view.
+     * Renders the main panel UI, recreating it from scratch each time to ensure a clean state.
      */
     function renderPanel() {
-        const isFirstRender = !ui.container;
-
-        if (isFirstRender) {
-            ui.container = document.createElement('div');
-            ui.container.id = config.selectors.container.substring(1);
-            Object.assign(ui.container.style, {
-                position: 'fixed', bottom: '20px', left: '20px', width: '300px',
-                fontSize: '9px', background: 'rgba(0,0,0,0.7)', color: '#fff',
-                padding: '5px', zIndex: 9999, fontFamily: 'monospace',
-                backdropFilter: 'blur(8px)', borderRadius: '8px', overflow: 'hidden',
-                border: '1px solid #555'
-            });
-            document.body.appendChild(ui.container);
-        }
-
-        const headerHTML = `
-            <div data-handle="drag" style="cursor: move; font-weight: bold; user-select: none; position: relative; background: #111; padding: 4px; margin: -5px -5px 8px -5px; border-bottom: 1px solid #444;">
-                Admin User Tool
-                <button data-action="toggle-collapse" title="Collapse" style="position: absolute; top: 1px; right: 22px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px; line-height: 1;">–</button>
-                <button data-action="close" title="Close" style="position: absolute; top: 1px; right: 4px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px;">✖</button>
-            </div>`;
-        const contentHTML = currentUser ? generateUserDataHTML() : generateSearchHTML();
-
-        ui.container.innerHTML = `
-            <style>
-              #${ui.container.id} { font-size: 9px; }
-              #${ui.container.id} input, #${ui.container.id} button { font-family: monospace; font-size: 9px; }
-              #${ui.container.id} .search-input { width: 100%; box-sizing: border-box; background: #222; color: white; border: 1px solid #888; border-radius: 4px; padding: 6px; font-size: 11px; }
-              #${ui.container.id} button { cursor: pointer; background-color: #444; color: white; border: 1px solid #888; border-radius: 4px; padding: 6px 8px; }
-              #${ui.container.id} button:disabled { cursor: not-allowed; background-color: #222; color: #666; }
-              #${ui.container.id} .feature-dropdown > div:hover { background-color: #555; }
-              #${ui.container.id} .search-btn { background-color: #3e6a94; font-size: 11px; }
-            </style>
-            ${headerHTML}
-            <div id="${config.selectors.resultsContainer.substring(1)}">${contentHTML}</div>
-        `;
-        if (isFirstRender) {
-            applySavedPosition(ui.container);
+        if (ui.container) {
+            ui.container.remove();
         }
 
         const isCollapsed = GM_getValue(config.storage.collapsedKey, false);
-        if (isCollapsed) {
-            const body = ui.container.querySelector(config.selectors.panelBody);
-            const btn = ui.container.querySelector(config.selectors.collapseBtn);
-            if (body) body.style.display = 'none';
-            if (btn) {
-                btn.innerHTML = '◻';
-                btn.title = 'Expand';
-            }
-        }
+        const container = document.createElement('div');
+        container.id = config.selectors.container.substring(1);
+        Object.assign(container.style, {
+            position: 'fixed', bottom: '20px', left: '20px', width: '300px',
+            fontSize: '9px', background: 'rgba(0,0,0,0.7)', color: '#fff',
+            padding: '5px', zIndex: 9999, fontFamily: 'monospace',
+            backdropFilter: 'blur(8px)', borderRadius: '8px', overflow: 'hidden',
+            border: '1px solid #555'
+        });
+
+        const headerHTML = `
+            <div data-handle="drag" style="cursor: move; font-weight: bold; user-select: none; position: relative; background: #111; padding: 4px; margin: -5px -5px 8px -5px; border-bottom: 1px solid #444;">
+                Admin Tool
+                <button data-action="toggle-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}" style="position: absolute; top: 1px; right: 22px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px; line-height: 1;">${isCollapsed ? '◻' : '–'}</button>
+                <button data-action="close" title="Close" style="position: absolute; top: 1px; right: 4px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px;">✖</button>
+            </div>`;
+        const contentHTML = currentUser ? generateUserDataHTML() : generateSearchHTML();
+        const panelBodyId = config.selectors.panelBody.substring(1);
+
+        container.innerHTML = `
+            <style>
+              #${container.id} { font-size: 9px; }
+              #${container.id} input, #${container.id} button { font-family: monospace; font-size: 9px; }
+              #${container.id} .search-input { width: 100%; box-sizing: border-box; background: #222; color: white; border: 1px solid #888; border-radius: 4px; padding: 6px; font-size: 11px; }
+              #${container.id} button { cursor: pointer; background-color: #444; color: white; border: 1px solid #888; border-radius: 4px; padding: 6px 8px; }
+              #${container.id} button:disabled { cursor: not-allowed; background-color: #222; color: #666; }
+            </style>
+            ${headerHTML}
+            <div id="${panelBodyId}" style="display: ${isCollapsed ? 'none' : 'block'};">
+                ${contentHTML}
+            </div>
+        `;
+
+        document.body.appendChild(container);
+        ui.container = container;
+
+        applySavedPosition(container);
+        attachEventListeners();
+        makeDraggable(container);
     }
 
     /**
@@ -586,14 +549,13 @@
     function generateUserDataHTML() {
         const { id, email, features } = currentUser;
         const featureEntries = Object.entries(features).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-
         const featuresHTML = featureEntries.map(([key, value]) => {
             if (config.nonInteractiveFeatures.includes(key)) return '';
 
-            const displayKey = key.length > 35 ? key.substring(0, 34) + '...' : key;
+            const displayKey = key.length > 39 ? key.substring(0, 38) + '...' : key;
             const commonStyles = `display: flex; justify-content: space-between; align-items: center; margin-top: 2px;`;
-            const textInputStyles = `height: 17px; box-sizing: border-box; background: #222; color: white; border-radius: 4px; padding: 4px 6px; text-align:center; border: 1px solid #fff;`;
-            const booleanBtnStyles = `width: 27.5%; height: 17px; box-sizing: border-box; background-color: #444; border-radius: 4px; border: none; padding: 0; line-height: 1.6;`;
+            const textInputStyles = `width: 50%; height: 17px; box-sizing: border-box; background: #222; color: white; border: 1px solid #fff; border-radius: 4px; padding: 4px 6px; font-family: monospace; font-size: 9px; text-align:center;`;
+            const booleanBtnStyles = `color:${value ? 'limegreen' : 'crimson'}; cursor: pointer; background-color: #444; border:none; border-radius: 4px; padding: 0 4px; font-size: 9px; font-family: monospace; line-height: 1.6; width: 40px; text-align: center;`;
 
             if (key === 'FeatureChatExperiment') {
                  const dropdownId = `feature-dropdown-${key}`;
@@ -601,37 +563,29 @@
                  return `
                      <div style="${commonStyles}" title="${key}">
                          <span>${displayKey}:</span>
-                         <div style="width: 55%; display: flex; align-items: center; position: relative;">
-                             <button data-action="toggle-dropdown" data-target-dropdown="${dropdownId}"
-                                     title="Select a value"
-                                     style="height: 17px; box-sizing: border-box; background-color: #444; color: white; border: 1px solid #fff; border-right: none; border-radius: 4px 0 0 4px; padding: 0 4px; cursor: pointer; flex-shrink: 0;">
-                                 ▼
-                             </button>
+                         <div style="position: relative; display: flex; align-items: center; gap: 2px; width: 50%;">
                              <input id="${inputId}" data-action="update-feature-value" data-key="${key}" type="text" value="${value ?? ''}"
-                                    style="height: 17px; box-sizing: border-box; background: #222; color: white; border: 1px solid #fff; padding: 4px 6px; width: 100%; border-radius: 0 4px 4px 0; text-align: left;">
+                                    style="width: 100%; height: 17px; box-sizing: border-box; background: #222; color: white; border: 1px solid #fff; border-radius: 4px; padding: 4px 6px; font-family: monospace; font-size: 9px; text-align:center;">
+                             <button data-action="toggle-dropdown" data-target-dropdown="${dropdownId}"
+                                     style="height: 17px; width: 18px; padding: 0; cursor: pointer; background: #555; border: 1px solid #888; border-radius: 4px; color: white;">▼</button>
                              <div id="${dropdownId}" class="feature-dropdown" data-target-input="#${inputId}"
-                                  style="display: none; position: absolute; top: 18px; left: 0; background: #333; border: 1px solid #888; border-radius: 4px; z-index: 10; width: 100%; max-height: 150px; overflow-y: auto;">
-                                 ${config.featureChatExperimentOptions.map(option => `
-                                     <div data-action="set-feature-from-dropdown" data-value="${option}" style="padding: 4px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                         ${option.replace(/test_|_/g, ' ')}
-                                     </div>
-                                 `).join('')}
+                                  style="display: none; position: absolute; top: 100%; right: 0; background: #222; border: 1px solid #888; border-radius: 4px; z-index: 10; width: 100%;">
+                                 ${config.featureChatExperimentOptions.map(option => `<div data-action="set-feature-from-dropdown" data-value="${option}" style="padding: 4px 6px; cursor: pointer;">${option.replace('test_','')}</div>`).join('')}
                              </div>
                          </div>
                      </div>`;
             } else if (typeof value === 'boolean') {
                 return `<div style="${commonStyles}" title="${key}">
                             <span>${displayKey}:</span>
-                            <button data-action="toggle-feature" data-key="${key}" style="${booleanBtnStyles} color:${value ? 'limegreen' : 'crimson'};">${value}</button>
+                            <button data-action="toggle-feature" data-key="${key}" style="${booleanBtnStyles}">${value}</button>
                         </div>`;
             } else {
                 return `<div style="${commonStyles}" title="${key}">
                             <span>${displayKey}:</span>
-                            <input data-action="update-feature-value" data-key="${key}" type="text" value="${value ?? ''}" style="${textInputStyles} width: 55%;">
+                            <input data-action="update-feature-value" data-key="${key}" type="text" value="${value ?? ''}" style="${textInputStyles}">
                         </div>`;
             }
         }).join('');
-
         return `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <div>
@@ -675,51 +629,40 @@
 
     /**
      * Makes the panel draggable by its header.
+     * @param {HTMLElement} container The draggable container element.
      */
-    function makeDraggable() {
+    function makeDraggable(container) {
+        const dragHandle = container.querySelector(config.selectors.dragHandle);
+        if (!dragHandle) return;
         let isDragging = false;
         let offsetX, offsetY;
-
         const onMouseMove = (e) => {
             if (!isDragging) return;
-            ui.container.style.left = `${e.clientX - offsetX}px`;
-            ui.container.style.top = `${e.clientY - offsetY}px`;
-            ui.container.style.right = 'auto';
-            ui.container.style.bottom = 'auto';
+            container.style.left = `${e.clientX - offsetX}px`;
+            container.style.top = `${e.clientY - offsetY}px`;
         };
-
         const onMouseUp = () => {
             if (!isDragging) return;
             isDragging = false;
-
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
-
-            localStorage.setItem(config.storage.positionKey, JSON.stringify({
-                left: ui.container.offsetLeft,
-                top: ui.container.offsetTop,
-            }));
+            localStorage.setItem(config.storage.positionKey, JSON.stringify({ left: container.offsetLeft, top: container.offsetTop }));
         };
-
         const onMouseDown = (e) => {
-            if (!ui.container || !e.target.matches(config.selectors.dragHandle)) return;
-
             isDragging = true;
-            offsetX = e.clientX - ui.container.getBoundingClientRect().left;
-            offsetY = e.clientY - ui.container.getBoundingClientRect().top;
-            ui.container.style.transition = 'none';
+            offsetX = e.clientX - container.getBoundingClientRect().left;
+            offsetY = e.clientY - container.getBoundingClientRect().top;
+            container.style.transition = 'none';
+            container.style.right = 'auto';
+            container.style.bottom = 'auto';
             e.preventDefault();
-
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         };
-
-        document.removeEventListener('mousedown', onMouseDown);
-        document.addEventListener('mousedown', onMouseDown);
+        dragHandle.addEventListener('mousedown', onMouseDown);
     }
 
     // --- INITIALIZATION ---
-    showLoader();
     waitForLoad();
 
 })();
