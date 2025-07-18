@@ -2,7 +2,7 @@
 // @name         Get-Honey Admin Tool
 // @namespace    https://github.com/bohdan-gen-tech
 // @version      2025.07.18.12
-// @description  Added drag and drop capability on mobile devices
+// @description  Added drag and drop capability on mobile devices. Full code in Confluence.
 // @author       Bohdan S.
 // @match        https://get-honey.ai/*
 // @icon         https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000
