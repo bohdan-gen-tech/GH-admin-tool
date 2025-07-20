@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Get-Honey Admin Tool
+// @name         Admin Tool. Free ver. Full code in Confluence 
 // @namespace    https://github.com/bohdan-gen-tech
-// @version      2025.07.18.12
-// @description  Added drag and drop capability on mobile devices. Full code in Confluence.
+// @version      2025.07.20.1
+// @description  Improved mobile UX: drag & drop + UI fixes
 // @author       Bohdan S.
 // @match        https://get-honey.ai/*
 // @icon         https://img.icons8.com/?size=100&id=U3kAAvzmMybK&format=png&color=000000
@@ -70,23 +70,14 @@
         },
     };
 
-    let ui = { container: null };
+    let ui = { container: null, loader: null };
     let currentUser = null;
     let lastEditedField = null;
 
     // --- SCRIPT LOGIC & HANDLERS ---
 
-    /**
-     * Capitalizes the first letter of a string.
-     * @param {string} s The input string.
-     * @returns {string} The capitalized string.
-     */
     const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-    /**
-     * Determines the correct API endpoint and product ID based on the current domain.
-     * @returns {{apiBase: string, productId: string}} The API configuration for the current environment.
-     */
     function getApiConfigForCurrentDomain() {
         const currentHost = window.location.hostname.replace(/^www\./, '');
         if (config.domainGroups.prod.includes(currentHost)) return { apiBase: config.api.prodApiBase, productId: config.api.prodProductId };
@@ -94,9 +85,6 @@
         return { apiBase: config.api.stageApiBase, productId: config.api.stageProductId };
     }
 
-    /**
-     * Loads the current user's data from sessionStorage on script startup.
-     */
     function loadPersistedUser() {
         const savedUserJSON = sessionStorage.getItem(config.storage.currentUserKey);
         if (savedUserJSON) {
@@ -110,17 +98,12 @@
         }
     }
 
-    /**
-     * Initializes the script.
-     */
     function init() {
         loadPersistedUser();
+        hideLoader();
         renderPanel();
     }
 
-    /**
-     * Waits for the page to be fully loaded before executing the main script logic.
-     */
     function waitForLoad() {
         if (document.readyState === 'complete') {
             setTimeout(init, 1500);
@@ -129,9 +112,6 @@
         }
     }
 
-    /**
-     * Attaches all event listeners for the panel's functionality.
-     */
     function attachEventListeners() {
         if (!ui.container) return;
 
@@ -192,9 +172,6 @@
         }, true);
     }
 
-    /**
-     * Displays a hint indicating which search field will be used if both are filled.
-     */
     function updateSearchHint() {
         const hintArea = ui.container.querySelector(config.selectors.searchHint);
         if (!hintArea) return;
@@ -208,10 +185,6 @@
         }
     }
 
-    /**
-     * Retrieves a cached admin access token or fetches a new one if expired.
-     * @returns {Promise<string>} The admin access token.
-     */
     async function getAdminAccessToken() {
         const cachedTokenData = GM_getValue(config.storage.adminTokenCacheKey, null);
         const now = new Date().getTime();
@@ -231,9 +204,6 @@
         return accessToken;
     }
 
-    /**
-     * Handles the user search logic, fetching user data by ID or Email.
-     */
     async function handleFindUser() {
         const userIdInput = ui.container.querySelector(config.selectors.userIdInput);
         const emailInput = ui.container.querySelector(config.selectors.emailInput);
@@ -284,11 +254,6 @@
         }
     }
 
-    /**
-     * Grants a one-month free subscription to the specified user.
-     * @param {HTMLElement} button The clicked button element.
-     * @param {string} userId The ID of the user.
-     */
     async function handleSubscriptionActivation(button, userId) {
         button.disabled = true;
         button.textContent = '⏳';
@@ -310,11 +275,6 @@
         }
     }
 
-    /**
-     * Updates the token balance for the specified user.
-     * @param {HTMLElement} button The clicked button element.
-     * @param {string} userId The ID of the user.
-     */
     async function handleUpdateTokens(button, userId) {
         const input = ui.container.querySelector(config.selectors.tokensInput);
         const amount = parseInt(input.value, 10);
@@ -346,12 +306,6 @@
         }
     }
 
-    /**
-     * Sends a request to update a user's feature flags.
-     * @param {string} userId The ID of the user.
-     * @param {string} featureKey The key of the feature to update.
-     * @param {any} newFeatureValue The new value for the feature.
-     */
     async function handleUpdateUserFeature(userId, featureKey, newFeatureValue) {
         const { apiBase } = getApiConfigForCurrentDomain();
         const accessToken = await getAdminAccessToken();
@@ -369,11 +323,6 @@
         sessionStorage.setItem(config.storage.currentUserKey, JSON.stringify(currentUser));
     }
 
-    /**
-     * Toggles a boolean user feature on or off.
-     * @param {HTMLElement} button The clicked button element.
-     * @param {string} userId The ID of the user.
-     */
     async function handleToggleFeature(button, userId) {
         const key = button.dataset.key;
         const currentValue = currentUser.features[key];
@@ -393,11 +342,6 @@
         }
     }
 
-    /**
-     * Updates a user feature with a value from an input field.
-     * @param {HTMLElement} input The input element.
-     * @param {string} userId The ID of the user.
-     */
     async function handleUpdateFeatureValue(input, userId) {
         const key = input.dataset.key;
         let newValue = input.value;
@@ -420,10 +364,6 @@
         }
     }
 
-    /**
-     * Toggles the visibility of a feature's dropdown menu.
-     * @param {HTMLElement} button The clicked dropdown toggle button.
-     */
     function handleToggleDropdown(button) {
         const dropdownId = button.dataset.targetDropdown;
         const dropdown = ui.container.querySelector(`#${dropdownId}`);
@@ -434,10 +374,6 @@
         }
     }
 
-    /**
-     * Sets the value of an input field from a dropdown selection.
-     * @param {HTMLElement} optionElement The clicked dropdown option element.
-     */
     function handleSetFeatureFromDropdown(optionElement) {
         const newValue = optionElement.dataset.value;
         const dropdown = optionElement.closest('.feature-dropdown');
@@ -451,10 +387,6 @@
         dropdown.style.display = 'none';
     }
 
-    /**
-     * Collapses or expands the panel body.
-     * @param {HTMLElement} button The clicked collapse/expand button.
-     */
     function handleToggleCollapse(button) {
         const body = ui.container.querySelector(config.selectors.panelBody);
         if (!body) return;
@@ -463,7 +395,7 @@
         const newState = !isCurrentlyHidden;
 
         body.style.display = newState ? 'none' : 'block';
-        button.textContent = newState ? '◻' : '–';
+        button.textContent = newState ? '⊞' : '−';
         button.title = newState ? 'Expand' : 'Collapse';
 
         GM_setValue(config.storage.collapsedKey, newState);
@@ -471,9 +403,27 @@
 
     // --- UI & PANEL RENDERING ---
 
-    /**
-     * Renders the main panel UI, recreating it from scratch each time to ensure a clean state.
-     */
+    function showLoader() {
+        if (document.getElementById('bgt-loader')) return;
+        ui.loader = document.createElement('div');
+        ui.loader.id = 'bgt-loader';
+        ui.loader.textContent = '⏳ Loading Admin Tool...';
+        Object.assign(ui.loader.style, {
+            position: 'fixed', bottom: '20px', left: '20px', padding: '8px 12px',
+            background: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '10px',
+            fontFamily: 'monospace', borderRadius: '9px', zIndex: 9999, backdropFilter: 'blur(4px)',
+        });
+        document.body.appendChild(ui.loader);
+    }
+
+    function hideLoader() {
+        const loader = document.getElementById('bgt-loader');
+        if (loader) {
+            loader.remove();
+            ui.loader = null;
+        }
+    }
+
     function renderPanel() {
         if (ui.container) {
             ui.container.remove();
@@ -491,10 +441,12 @@
         });
 
         const headerHTML = `
-            <div data-handle="drag" style="cursor: move; font-weight: bold; user-select: none; position: relative; background: #111; padding: 4px; margin: -5px -5px 8px -5px; border-bottom: 1px solid #444;">
-                Admin Tool
-                <button data-action="toggle-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}" style="position: absolute; top: 1px; right: 22px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px; line-height: 1;">${isCollapsed ? '◻' : '–'}</button>
-                <button data-action="close" title="Close" style="position: absolute; top: 1px; right: 4px; border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 4px;">✖</button>
+            <div data-handle="drag" style="cursor: move; font-weight: bold; user-select: none; position: relative; background: #111; padding: 0 4px 0 8px;; margin: -5px -5px 8px -5px; border-bottom: 1px solid #444; display: flex; align-items: center; justify-content: space-between; height: 25px;">
+                <span>Admin Tool</span>
+                <div style="display: flex; align-items: center;">
+                    <button data-action="toggle-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}" style="border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1;">${isCollapsed ? '⊞' : '−'}</button>
+                    <button data-action="close" title="Close" style="border: none; background: transparent; color: #aaa; font-size: 18px; cursor: pointer; padding: 0 6px; line-height: 1;">×</button>
+                </div>
             </div>`;
         const contentHTML = currentUser ? generateUserDataHTML() : generateSearchHTML();
         const panelBodyId = config.selectors.panelBody.substring(1);
@@ -521,10 +473,6 @@
         makeDraggable(container);
     }
 
-    /**
-     * Generates the HTML content for the initial search view.
-     * @returns {string} The HTML string for the search form.
-     */
     function generateSearchHTML() {
         return `
             <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -542,21 +490,15 @@
             </div>`;
     }
 
-    /**
-     * Generates the HTML content for the user data view.
-     * @returns {string} The HTML string for the user data display.
-     */
     function generateUserDataHTML() {
         const { id, email, features } = currentUser;
         const featureEntries = Object.entries(features).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
         const featuresHTML = featureEntries.map(([key, value]) => {
             if (config.nonInteractiveFeatures.includes(key)) return '';
-
             const displayKey = key.length > 39 ? key.substring(0, 38) + '...' : key;
             const commonStyles = `display: flex; justify-content: space-between; align-items: center; margin-top: 2px;`;
             const textInputStyles = `width: 50%; height: 17px; box-sizing: border-box; background: #222; color: white; border: 1px solid #fff; border-radius: 4px; padding: 4px 6px; font-family: monospace; font-size: 9px; text-align:center;`;
             const booleanBtnStyles = `color:${value ? 'limegreen' : 'crimson'}; cursor: pointer; background-color: #444; border:none; border-radius: 4px; padding: 0 4px; font-size: 9px; font-family: monospace; line-height: 1.6; width: 40px; text-align: center;`;
-
             if (key === 'FeatureChatExperiment') {
                  const dropdownId = `feature-dropdown-${key}`;
                  const inputId = `feature-input-${key}`;
@@ -610,10 +552,6 @@
 
     // --- DRAGGING & POSITIONING ---
 
-    /**
-     * Applies the saved panel position from localStorage.
-     * @param {HTMLElement} container The panel element to position.
-     */
     function applySavedPosition(container) {
         const savedPos = localStorage.getItem(config.storage.positionKey);
         if (savedPos) {
@@ -627,74 +565,52 @@
         }
     }
 
-    /**
-     * Makes the panel draggable by its header.
-     * @param {HTMLElement} container The draggable container element.
-     */
     function makeDraggable(container) {
         const dragHandle = container.querySelector(config.selectors.dragHandle);
         if (!dragHandle) return;
-
         let isDragging = false;
         let offsetX, offsetY;
-
-        // A helper function to get coordinates from either mouse or touch events
         const getCoords = (e) => {
             if (e.touches && e.touches.length) {
                 return { x: e.touches[0].clientX, y: e.touches[0].clientY };
             }
             return { x: e.clientX, y: e.clientY };
         };
-
         const onDragStart = (e) => {
             isDragging = true;
             const coords = getCoords(e);
             offsetX = coords.x - container.getBoundingClientRect().left;
             offsetY = coords.y - container.getBoundingClientRect().top;
-
             container.style.transition = 'none';
             container.style.right = 'auto';
             container.style.bottom = 'auto';
-
-            // Add listeners for both mouse and touch move events
             document.addEventListener('mousemove', onDragMove);
             document.addEventListener('touchmove', onDragMove, { passive: false });
-
-            // Add listeners for both mouse and touch end events
             document.addEventListener('mouseup', onDragEnd);
             document.addEventListener('touchend', onDragEnd);
         };
-
         const onDragMove = (e) => {
             if (!isDragging) return;
-            // Prevent the page from scrolling on mobile while dragging
             e.preventDefault();
-
             const coords = getCoords(e);
             container.style.left = `${coords.x - offsetX}px`;
             container.style.top = `${coords.y - offsetY}px`;
         };
-
         const onDragEnd = () => {
             if (!isDragging) return;
             isDragging = false;
-
-            // Remove all move and end listeners
             document.removeEventListener('mousemove', onDragMove);
             document.removeEventListener('touchmove', onDragMove);
             document.removeEventListener('mouseup', onDragEnd);
             document.removeEventListener('touchend', onDragEnd);
-
-            // Save the final position
             localStorage.setItem(config.storage.positionKey, JSON.stringify({ left: container.offsetLeft, top: container.offsetTop }));
         };
-
-        // Attach the initial start listeners
         dragHandle.addEventListener('mousedown', onDragStart);
         dragHandle.addEventListener('touchstart', onDragStart, { passive: false });
     }
 
     // --- INITIALIZATION ---
+    showLoader();
     waitForLoad();
 
 })();
