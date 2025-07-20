@@ -442,7 +442,7 @@
 
         const headerHTML = `
             <div data-handle="drag" style="cursor: move; font-weight: bold; user-select: none; position: relative; background: #ec5353; padding: 0 0px 0 8px;; margin: -5px -5px 8px -5px; border-bottom: 1px solid #444; display: flex; align-items: center; justify-content: space-between; height: 25px;">
-                <span>Admin Tool. Free ver. Full code in Confluence</span>
+                <span>Admin Tool. Free ver. Full in Confluence</span>
                 <div style="display: flex; align-items: center;">
                     <button data-action="toggle-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}" style="border: none; background: transparent; color: #aaa; font-size: 16px; cursor: pointer; padding: 0 6px; line-height: 1;">${isCollapsed ? '⊞' : '−'}</button>
                     <button data-action="close" title="Close" style="border: none; background: transparent; color: #aaa; font-size: 18px; cursor: pointer; padding: 0 6px; line-height: 1;">×</button>
